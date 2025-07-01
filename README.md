@@ -69,12 +69,12 @@ This will:
 #### Step 2: Select Person to Track
 
 ```bash
-auto-cropper track ./output/input_video_detections.json --method largest
+auto-cropper track ./output/input_video_detections.json
 ```
 
 This will:
 - Analyze the detection data
-- Select which person to track based on the chosen method
+- Select which person to track using the 'most_consistent' method
 - Save tracking data to `./output/input_video_tracking.json`
 
 #### Step 3: Crop the Video
@@ -109,23 +109,15 @@ auto-cropper detect video.mp4 [OPTIONS]
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--output-dir, -o` | `./output` | Output directory for detection data |
-| `--model, -m` | `yolov8l.pt` | YOLO model (n/s/m/l/x) |
 | `--confidence, -c` | `0.5` | Minimum detection confidence |
 
 ### Tracking Options
 
 ```bash
-auto-cropper track detections.json [OPTIONS]
+auto-cropper track detections.json
 ```
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--method, -m` | `largest` | Person selection method |
-
-**Selection Methods:**
-- `largest`: Select person with largest average bounding box
-- `most_consistent`: Select person who appears in most frames
-- `center`: Select person closest to center of frame
+The track command automatically uses the 'most_consistent' method to select the person who appears in the most frames.
 
 ### Cropping Options
 
@@ -145,7 +137,15 @@ auto-cropper crop video.mp4 tracking.json [OPTIONS]
 auto-cropper process video.mp4 [OPTIONS]
 ```
 
-Combines all detection, tracking, and cropping options.
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--output-dir, -o` | `./output` | Output directory |
+| `--confidence, -c` | `0.5` | Minimum detection confidence |
+| `--margin, -mg` | `50` | Margin around person (pixels) |
+| `--smoothing, -s` | `10` | Smoothing window size |
+| `--duration, -d` | None | Limit to first N seconds (optional) |
+
+Runs the complete detection, tracking, and cropping pipeline in one command.
 
 ## Examples
 
@@ -155,11 +155,11 @@ Combines all detection, tracking, and cropping options.
 # Process a video with default settings
 auto-cropper process my_video.mp4
 
-# Use a more accurate model (slower but better detection)
-auto-cropper --verbose process my_video.mp4 --model yolov8m.pt
+# Use a more accurate model (yolov8l.pt is used by default)
+auto-cropper --verbose process my_video.mp4
 
-# Track the most consistent person
-auto-cropper --verbose process my_video.mp4 --track-method most_consistent
+# Track using the built-in most_consistent method  
+auto-cropper --verbose process my_video.mp4
 
 # Add more margin around the person
 auto-cropper --verbose process my_video.mp4 --margin 100
@@ -169,10 +169,10 @@ auto-cropper --verbose process my_video.mp4 --margin 100
 
 ```bash
 # 1. Detect with high confidence threshold
-auto-cropper --verbose detect video.mp4 --confidence 0.7 --model yolov8s.pt
+auto-cropper --verbose detect video.mp4 --confidence 0.7
 
-# 2. Track the person closest to center
-auto-cropper --verbose track ./output/video_detections.json --method center
+# 2. Track the person (uses most_consistent method)
+auto-cropper --verbose track ./output/video_detections.json
 
 # 3. Crop with extra margin and smoothing
 auto-cropper --verbose crop video.mp4 ./output/video_tracking.json --margin 75 --smoothing 15
@@ -189,11 +189,9 @@ auto-cropper summary ./output/video_detections.json
 
 - **Processing Time**: Expect 1-3 minutes per minute of video for detection (varies by hardware)
 - **GPU Acceleration**: If you have a CUDA-capable GPU, detection will be significantly faster
-- **Model Selection**: 
-  - `yolov8n.pt`: Fastest, least accurate
-  - `yolov8s.pt`: Good balance of speed and accuracy
-  - `yolov8m.pt`: Better accuracy, slower
-  - `yolov8l.pt` and `yolov8x.pt`: Best accuracy, slowest
+- **Model Selection**: The tool uses `yolov8l.pt` by default for the best balance of accuracy and performance
+  - The model is automatically downloaded on first use (87.8MB)
+  - For faster processing with slightly lower accuracy, you can modify the code to use `yolov8n.pt` or `yolov8s.pt`
 
 ## Output Files
 
@@ -253,47 +251,20 @@ The tool creates several files during processing:
 
 **No people detected:**
 - Try lowering the `--confidence` threshold
-- Use a more accurate model (e.g., `yolov8m.pt` instead of `yolov8n.pt`)
+- The tool uses the accurate `yolov8l.pt` model by default
 - Check if the video quality is sufficient
 
 **Poor tracking:**
-- Try a different `--track-method`
+- The tool uses the 'most_consistent' tracking method which selects the person appearing in the most frames
 - Check the detection summary to see if the person is consistently detected
-- Consider using manual detection data editing
 
 **Jerky video:**
-- Increase the `--smoothing` window size
+- Increase the `--smoothing` window size (default is 10 frames)
 - Reduce the detection confidence to get more consistent detections
 
 **Large output files:**
 - The output video maintains the original frame rate and quality
 - Consider post-processing to reduce file size if needed
-
-## Development
-
-### Setting up Development Environment
-
-```bash
-git clone <repository-url>
-cd auto-cropper
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-```
-
-### Running Tests
-
-```bash
-pytest tests/
-```
-
-### Code Formatting
-
-```bash
-black auto_cropper/ tests/
-flake8 auto_cropper/ tests/
-mypy auto_cropper/
-```
 
 ## License
 
