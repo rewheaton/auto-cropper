@@ -43,7 +43,7 @@ class PersonTracker:
         
         # Initialize YOLO model
         try:
-            self.model = YOLO('yolov8n.pt')  # Will download if not present
+            self.model = YOLO('yolov8l.pt')  # Will download if not present
             if verbose:
                 self.logger.info("YOLO model loaded successfully")
         except Exception as e:

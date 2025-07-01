@@ -109,7 +109,7 @@ auto-cropper detect video.mp4 [OPTIONS]
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--output-dir, -o` | `./output` | Output directory for detection data |
-| `--model, -m` | `yolov8n.pt` | YOLO model (n/s/m/l/x) |
+| `--model, -m` | `yolov8l.pt` | YOLO model (n/s/m/l/x) |
 | `--confidence, -c` | `0.5` | Minimum detection confidence |
 
 ### Tracking Options

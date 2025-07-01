@@ -13,7 +13,7 @@ import logging
 class PersonDetector:
     """Detects and tracks people in video frames using YOLOv8."""
     
-    def __init__(self, model_name: str = 'yolov8n.pt', confidence: float = 0.5, verbose: bool = False):
+    def __init__(self, model_name: str = 'yolov8l.pt', confidence: float = 0.5, verbose: bool = False):
         """
         Initialize the person detector.
         
