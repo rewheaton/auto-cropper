@@ -28,9 +28,14 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-3. Install in development mode:
+3. Install in development mode (optional):
 ```bash
 pip install -e .
+```
+
+4. For development with additional tools:
+```bash
+pip install -r requirements-dev.txt
 ```
 
 ### Using pip (when published)
@@ -38,6 +43,8 @@ pip install -e .
 ```bash
 pip install auto-cropper
 ```
+
+**Note**: All dependencies are pinned to specific versions for reproducibility and stability.
 
 ## Usage
 
