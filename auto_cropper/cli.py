@@ -3,12 +3,144 @@
 import os
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 import click
 
 from .detector import PersonDetector, PersonTracker
 from .video_cropper import VideoCropper
+
+
+def validate_input_file(file_path: str, allowed_extensions: Optional[List[str]] = None) -> Path:
+    """
+    Validate that input file exists and has a valid extension.
+    
+    Args:
+        file_path: Path to the input file
+        allowed_extensions: List of allowed file extensions (e.g., ['.mp4', '.avi'])
+    
+    Returns:
+        Path object if valid
+        
+    Raises:
+        click.ClickException: If file is invalid
+    """
+    if allowed_extensions is None:
+        allowed_extensions = ['.mp4', '.avi', '.mov', '.mkv', '.m4v', '.wmv']
+    
+    path = Path(file_path)
+    
+    # Check if file exists
+    if not path.exists():
+        raise click.ClickException(f"❌ Input file does not exist: {file_path}")
+    
+    # Check if it's a file (not directory)
+    if not path.is_file():
+        raise click.ClickException(f"❌ Path is not a file: {file_path}")
+    
+    # Check file extension
+    if path.suffix.lower() not in [ext.lower() for ext in allowed_extensions]:
+        raise click.ClickException(
+            f"❌ Unsupported file format: {path.suffix}\n"
+            f"   Supported formats: {', '.join(allowed_extensions)}"
+        )
+    
+    # Check file size (warn if very large)
+    file_size_mb = path.stat().st_size / 1024 / 1024
+    if file_size_mb > 1000:  # 1GB
+        click.echo(f"⚠️  Large file detected ({file_size_mb:.1f} MB). Processing may take a while.", err=True)
+    
+    # Check if file is readable
+    try:
+        with open(path, 'rb') as f:
+            f.read(1)
+    except PermissionError:
+        raise click.ClickException(f"❌ Permission denied: Cannot read file {file_path}")
+    except Exception as e:
+        raise click.ClickException(f"❌ Cannot access file {file_path}: {e}")
+    
+    return path
+
+
+def ensure_output_directory(output_dir: str) -> Path:
+    """
+    Ensure output directory exists and is writable.
+    
+    Args:
+        output_dir: Path to the output directory
+        
+    Returns:
+        Path object for the directory
+        
+    Raises:
+        click.ClickException: If directory cannot be created or accessed
+    """
+    path = Path(output_dir)
+    
+    try:
+        # Create directory if it doesn't exist
+        path.mkdir(parents=True, exist_ok=True)
+    except PermissionError:
+        raise click.ClickException(f"❌ Permission denied: Cannot create directory {output_dir}")
+    except Exception as e:
+        raise click.ClickException(f"❌ Cannot create directory {output_dir}: {e}")
+    
+    # Check if directory is writable
+    if not os.access(path, os.W_OK):
+        raise click.ClickException(f"❌ Directory is not writable: {output_dir}")
+    
+    return path
+
+
+def validate_json_file(file_path: str, expected_keys: Optional[List[str]] = None) -> Path:
+    """
+    Validate that a JSON file exists and has expected structure.
+    
+    Args:
+        file_path: Path to the JSON file
+        expected_keys: List of required top-level keys
+        
+    Returns:
+        Path object if valid
+        
+    Raises:
+        click.ClickException: If file is invalid
+    """
+    import json
+    
+    path = Path(file_path)
+    
+    # Basic file existence check
+    if not path.exists():
+        raise click.ClickException(f"❌ JSON file does not exist: {file_path}")
+    
+    if not path.is_file():
+        raise click.ClickException(f"❌ Path is not a file: {file_path}")
+    
+    # Check if it's a JSON file
+    if path.suffix.lower() != '.json':
+        raise click.ClickException(f"❌ File must be a JSON file: {file_path}")
+    
+    # Try to parse JSON
+    try:
+        with open(path, 'r') as f:
+            data = json.load(f)
+    except json.JSONDecodeError as e:
+        raise click.ClickException(f"❌ Invalid JSON file {file_path}: {e}")
+    except PermissionError:
+        raise click.ClickException(f"❌ Permission denied: Cannot read file {file_path}")
+    except Exception as e:
+        raise click.ClickException(f"❌ Cannot read JSON file {file_path}: {e}")
+    
+    # Check expected keys
+    if expected_keys:
+        missing_keys = [key for key in expected_keys if key not in data]
+        if missing_keys:
+            raise click.ClickException(
+                f"❌ JSON file {file_path} is missing required keys: {missing_keys}"
+            )
+    
+    return path
 
 
 @click.group()
@@ -28,7 +160,7 @@ def main(ctx, verbose):
 
 
 @main.command()
-@click.argument('video_path', type=click.Path(exists=True))
+@click.argument('video_path', type=click.Path())
 @click.option(
     '--output-dir', '-o',
     type=click.Path(),
@@ -50,6 +182,13 @@ def detect(ctx, video_path: str, output_dir: str, confidence: float):
     """
     verbose = ctx.obj['verbose']
     
+    # Validate inputs
+    try:
+        validated_video_path = validate_input_file(video_path)
+        validated_output_dir = ensure_output_directory(output_dir)
+    except click.ClickException:
+        raise  # Re-raise click exceptions as-is
+    
     try:
         detector = PersonDetector(
             model_name='yolov8l.pt',
@@ -57,7 +196,7 @@ def detect(ctx, video_path: str, output_dir: str, confidence: float):
             verbose=verbose
         )
         
-        detection_file = detector.detect_people_in_video(video_path, output_dir)
+        detection_file = detector.detect_people_in_video(str(validated_video_path), str(validated_output_dir))
         
         # Show summary
         summary = detector.get_detection_summary(detection_file)
@@ -84,7 +223,7 @@ def detect(ctx, video_path: str, output_dir: str, confidence: float):
 
 
 @main.command()
-@click.argument('detection_file', type=click.Path(exists=True))
+@click.argument('detection_file', type=click.Path())
 @click.pass_context
 def track(ctx, detection_file: str):
     """
@@ -94,9 +233,15 @@ def track(ctx, detection_file: str):
     """
     verbose = ctx.obj['verbose']
     
+    # Validate inputs
+    try:
+        validated_detection_file = validate_json_file(detection_file, ['video_info', 'frames'])
+    except click.ClickException:
+        raise  # Re-raise click exceptions as-is
+    
     try:
         tracker = PersonTracker(verbose=verbose)
-        tracking_file = tracker.select_person_to_track(detection_file, 'most_consistent')
+        tracking_file = tracker.select_person_to_track(str(validated_detection_file), 'most_consistent')
         
         # Load and show tracking summary
         import json
@@ -126,8 +271,8 @@ def track(ctx, detection_file: str):
 
 
 @main.command()
-@click.argument('video_path', type=click.Path(exists=True))
-@click.argument('tracking_file', type=click.Path(exists=True))
+@click.argument('video_path', type=click.Path())
+@click.argument('tracking_file', type=click.Path())
 @click.option(
     '--output', '-o',
     type=click.Path(),
@@ -160,6 +305,19 @@ def crop(ctx, video_path: str, tracking_file: str, output: Optional[str], margin
     """
     verbose = ctx.obj['verbose']
     
+    # Validate inputs
+    try:
+        validated_video_path = validate_input_file(video_path)
+        validated_tracking_file = validate_json_file(tracking_file, ['video_info', 'tracking_info', 'frames'])
+        
+        # Ensure output directory exists if output path is specified
+        if output:
+            output_path = Path(output)
+            if output_path.parent != Path('.'):
+                ensure_output_directory(str(output_path.parent))
+    except click.ClickException:
+        raise  # Re-raise click exceptions as-is
+    
     try:
         cropper = VideoCropper(
             margin=margin,
@@ -167,13 +325,13 @@ def crop(ctx, video_path: str, tracking_file: str, output: Optional[str], margin
             verbose=verbose
         )
         
-        output_path = cropper.crop_video(video_path, tracking_file, output, duration_limit=duration)
+        output_path = cropper.crop_video(str(validated_video_path), str(validated_tracking_file), output, duration_limit=duration)
         
         click.echo(f"\n✓ Video cropping complete!")
         click.echo(f"🎬 Cropped video saved to: {output_path}")
         
         # Show file size info
-        original_size = Path(video_path).stat().st_size
+        original_size = Path(validated_video_path).stat().st_size
         cropped_size = Path(output_path).stat().st_size
         size_ratio = cropped_size / original_size * 100
         
@@ -187,7 +345,7 @@ def crop(ctx, video_path: str, tracking_file: str, output: Optional[str], margin
 
 
 @main.command()
-@click.argument('video_path', type=click.Path(exists=True))
+@click.argument('video_path', type=click.Path())
 @click.option(
     '--output-dir', '-o',
     type=click.Path(),
@@ -227,13 +385,20 @@ def process(ctx, video_path: str, output_dir: str, confidence: float,
     """
     verbose = ctx.obj['verbose']
     
+    # Validate inputs early
+    try:
+        validated_video_path = validate_input_file(video_path)
+        validated_output_dir = ensure_output_directory(output_dir)
+    except click.ClickException:
+        raise  # Re-raise click exceptions as-is
+    
     click.echo("🎬 Starting complete video processing pipeline...")
     
     try:
         # Step 1: Detection
         click.echo("\n📍 Step 1: Detecting people in video...")
         detector = PersonDetector(model_name='yolov8l.pt', confidence=confidence, verbose=verbose)
-        detection_file = detector.detect_people_in_video(video_path, output_dir)
+        detection_file = detector.detect_people_in_video(str(validated_video_path), str(validated_output_dir))
         
         # Step 2: Tracking
         click.echo("\n🎯 Step 2: Selecting person to track...")
@@ -241,6 +406,9 @@ def process(ctx, video_path: str, output_dir: str, confidence: float,
         tracking_file = tracker.select_person_to_track(detection_file, 'most_consistent')
         
         # Step 3: Cropping
+        click.echo("\n✂️  Step 3: Cropping video...")
+        cropper = VideoCropper(margin=margin, smoothing_window=smoothing, verbose=verbose)
+        output_path = cropper.crop_video(str(validated_video_path), tracking_file, output_dir=str(validated_output_dir), duration_limit=duration)
         click.echo("\n✂️  Step 3: Cropping video...")
         cropper = VideoCropper(margin=margin, smoothing_window=smoothing, verbose=verbose)
         output_path = cropper.crop_video(video_path, tracking_file, output_dir=output_dir, duration_limit=duration)
@@ -263,16 +431,22 @@ def process(ctx, video_path: str, output_dir: str, confidence: float,
 
 
 @main.command()
-@click.argument('detection_file', type=click.Path(exists=True))
+@click.argument('detection_file', type=click.Path())
 def summary(detection_file: str):
     """
     Show summary of detection data.
     
     DETECTION_FILE: Path to detection JSON file
     """
+    # Validate input
+    try:
+        validated_detection_file = validate_json_file(detection_file, ['video_info', 'frames'])
+    except click.ClickException:
+        raise  # Re-raise click exceptions as-is
+    
     try:
         detector = PersonDetector()
-        summary_data = detector.get_detection_summary(detection_file)
+        summary_data = detector.get_detection_summary(str(validated_detection_file))
         
         click.echo(f"\n📊 Detection Summary for {Path(detection_file).name}")
         click.echo("=" * 50)
