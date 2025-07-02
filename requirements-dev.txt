@@ -1,0 +1,14 @@
+# Development dependencies with pinned versions
+# Generated on 2025-07-02 from working environment
+
+# Testing framework
+pytest==8.4.1
+
+# Code formatting
+black==25.1.0
+
+# Code linting
+flake8==7.3.0
+
+# Type checking (optional)
+mypy==1.16.1
