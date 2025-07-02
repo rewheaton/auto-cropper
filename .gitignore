@@ -211,3 +211,5 @@ marimo/_lsp/
 __marimo__/
 .DS_Store
 yolov8l.pt
+yolov8s.pt
+*.pt
