@@ -109,7 +109,7 @@ class TestPersonDetector:
     def test_init_default(self):
         """Test default initialization."""
         detector = PersonDetector()
-        assert detector.model_name == 'yolov8n.pt'
+        assert detector.model_name == 'yolov8l.pt'
         assert detector.confidence == 0.5
         assert detector.verbose is False
         assert detector.person_class_id == 0
@@ -204,7 +204,7 @@ class TestVideoCropper:
         """Test default initialization."""
         cropper = VideoCropper()
         assert cropper.margin == 50
-        assert cropper.smoothing_window == 5
+        assert cropper.smoothing_window == 10
         assert cropper.target_aspect_ratio == 16/9
     
     def test_init_custom(self):
