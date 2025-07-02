@@ -40,8 +40,8 @@ If you have a question about usage or want to discuss the project:
 
 ## Contribution Alternative
 If you've improved the code:
-- ✅ **Fork this repository** and make your changes there
-- ✅ **Share a link** to your fork in this issue if others might benefit
-- ✅ **Describe your improvements** so others can learn from them
+- **Fork this repository** and make your changes there
+- **Share a link** to your fork in this issue if others might benefit
+- **Describe your improvements** so others can learn from them
 
-Thank you for your interest in auto-cropper! 🚀
+Thank you for your interest in auto-cropper!

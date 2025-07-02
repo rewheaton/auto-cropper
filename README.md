@@ -277,16 +277,16 @@ The tool creates several files during processing:
 
 **This is a personal project maintained by [@rewheaton](https://github.com/rewheaton).** 
 
-### 📚 **Usage & Forking**
-- ✅ **Fork this repository** for your own use and modifications
-- ✅ **Clone and use** the code according to the MIT License
-- ✅ **Report bugs** by creating an issue (if enabled)
+### Usage & Forking
+- **Fork this repository** for your own use and modifications
+- **Clone and use** the code according to the MIT License
+- **Report bugs** by creating an issue (if enabled)
 
-### 🚫 **Direct Contributions**
-- ❌ **Pull requests are not accepted** - This project is not seeking direct contributions
-- ❌ **Feature requests may not be implemented** - This is a personal tool
+### Direct Contributions
+- **Pull requests are not accepted** - This project is not seeking direct contributions
+- **Feature requests may not be implemented** - This is a personal tool
 
-### 💡 **Alternative Contribution Methods**
+### Alternative Contribution Methods
 - **Fork and improve** - Create your own enhanced version
 - **Share your improvements** - Link to your fork in discussions or issues
 - **Blog/write about it** - Share your experience using the tool
