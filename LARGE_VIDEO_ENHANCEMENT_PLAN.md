@@ -167,6 +167,5 @@ class ProcessingTimeoutException(LargeFileException):
 1. Implement `MemoryMonitor` class
 2. Add chunked detection processing
 3. Create streaming JSON writer
-4. Add basic memory management CLI options
 5. Update error handling for memory issues
 

@@ -4,7 +4,10 @@ import cv2
 import json
 import numpy as np
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from auto_cropper.memory_monitor import MemoryMonitor
 from ultralytics import YOLO
 from tqdm import tqdm
 import logging
@@ -210,3 +213,242 @@ class PersonDetector:
         }
         
         return summary
+    
+    def detect_people_in_video_chunked(
+        self,
+        video_path: str,
+        output_dir: str = "./output",
+        chunk_size_frames: Optional[int] = None,
+        overlap_frames: int = 0,
+        memory_monitor: Optional['MemoryMonitor'] = None,
+        checkpoint_interval: int = 1000
+    ) -> str:
+        """
+        Detect people in video using chunked processing for memory efficiency.
+        
+        Args:
+            video_path: Path to input video file
+            output_dir: Directory to save detection data
+            chunk_size_frames: Number of frames per chunk (auto-calculated if None)
+            overlap_frames: Number of overlapping frames between chunks
+            memory_monitor: Optional memory monitor for tracking usage
+            checkpoint_interval: Save progress every N frames
+            
+        Returns:
+            Path to the detection data JSON file
+            
+        Raises:
+            ValueError: If chunk parameters are invalid
+            MemoryLimitException: If memory limit is exceeded
+        """
+        from auto_cropper.memory_monitor import MemoryMonitor
+        from auto_cropper.streaming_json_writer import StreamingJSONWriter
+        from auto_cropper.exceptions import MemoryLimitException
+        
+        # Validate parameters
+        if chunk_size_frames is not None and chunk_size_frames <= 0:
+            raise ValueError("Chunk size must be positive")
+        if overlap_frames < 0:
+            raise ValueError("Overlap frames must be non-negative")
+        if chunk_size_frames is not None and overlap_frames >= chunk_size_frames:
+            raise ValueError("Overlap cannot be larger than chunk size")
+        
+        video_path_obj = Path(video_path)
+        output_dir_obj = Path(output_dir)
+        output_dir_obj.mkdir(exist_ok=True)
+        
+        detection_file = output_dir_obj / f"{video_path_obj.stem}_detections.json"
+        
+        self.logger.info(f"Processing video with chunked detection: {video_path_obj}")
+        
+        # Open video and get properties
+        cap = cv2.VideoCapture(str(video_path_obj))
+        if not cap.isOpened():
+            raise ValueError(f"Could not open video file: {video_path_obj}")
+        
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        
+        # Create or use provided memory monitor
+        if memory_monitor is None:
+            memory_monitor = MemoryMonitor()
+        
+        # Calculate optimal chunk size if not provided
+        if chunk_size_frames is None:
+            chunk_size_frames = self._get_optimal_chunk_size(memory_monitor, width, height)
+        
+        self.logger.info(f"Using chunk size: {chunk_size_frames} frames")
+        
+        # Prepare video info
+        video_info = {
+            "video_path": str(video_path_obj),
+            "total_frames": total_frames,
+            "fps": fps,
+            "width": width,
+            "height": height,
+            "detection_settings": {
+                "model": self.model_name,
+                "confidence": self.confidence,
+                "chunked_processing": True,
+                "chunk_size": chunk_size_frames,
+                "overlap_frames": overlap_frames
+            }
+        }
+        
+        # Process video in chunks using streaming writer
+        try:
+            with StreamingJSONWriter(str(detection_file), video_info) as writer:
+                current_frame = 0
+                progress_bar = tqdm(total=total_frames, desc="Detecting people (chunked)", disable=not self.verbose)
+                
+                while current_frame < total_frames:
+                    # Check memory usage
+                    if not memory_monitor.check_memory_usage():
+                        current_usage = memory_monitor.get_current_memory_usage()
+                        raise MemoryLimitException(
+                            current_usage_mb=current_usage,
+                            max_memory_mb=memory_monitor.max_memory_mb,
+                            message=f"Memory limit exceeded at frame {current_frame}. "
+                                   f"Current usage: {current_usage:.1f}MB, "
+                                   f"Limit: {memory_monitor.max_memory_mb}MB"
+                        )
+                    
+                    # Calculate chunk boundaries
+                    chunk_start = current_frame
+                    chunk_end = min(current_frame + chunk_size_frames, total_frames)
+                    
+                    # Process chunk
+                    chunk_frames = self._process_chunk(cap, chunk_start, chunk_end, current_frame, fps)
+                    
+                    # Write all frames from this chunk
+                    for frame_data in chunk_frames:
+                        writer.write_frame(frame_data)
+                        progress_bar.update(1)
+                    
+                    # Update current frame position (accounting for overlap)
+                    current_frame = chunk_end - overlap_frames if overlap_frames > 0 and chunk_end < total_frames else chunk_end
+                    
+                    # Cleanup GPU memory if available
+                    try:
+                        import torch
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                    except:
+                        pass
+                    
+                    # Checkpoint if needed
+                    if current_frame % checkpoint_interval == 0 and current_frame < total_frames:
+                        self.logger.info(f"Checkpoint: processed {current_frame}/{total_frames} frames")
+                
+                progress_bar.close()
+                
+        finally:
+            cap.release()
+        
+        frames_with_people = 0
+        total_detections = 0
+        
+        # Read back the file to count detections (could be optimized)
+        try:
+            with open(detection_file, 'r') as f:
+                data = json.load(f)
+            frames_with_people = len([f for f in data["frames"] if f["people"]])
+            total_detections = sum(len(f["people"]) for f in data["frames"])
+        except:
+            # If we can't read back for summary, that's ok
+            pass
+        
+        self.logger.info(f"Chunked detection complete. Processed {total_frames} frames")
+        self.logger.info(f"Frames with people: {frames_with_people}, Total detections: {total_detections}")
+        self.logger.info(f"Detection data saved to: {detection_file}")
+        
+        return str(detection_file)
+    
+    def _get_optimal_chunk_size(self, memory_monitor: 'MemoryMonitor', width: int, height: int) -> int:
+        """
+        Calculate optimal chunk size based on available memory and frame size.
+        
+        Args:
+            memory_monitor: Memory monitor instance
+            width: Video frame width
+            height: Video frame height
+            
+        Returns:
+            Optimal chunk size in frames
+        """
+        frame_size_mb = self._estimate_frame_size_mb(width, height)
+        base_chunk_size = memory_monitor.get_recommended_batch_size(frame_size_mb)
+        
+        # Apply safety factor and reasonable bounds
+        safety_factor = 0.8  # Use 80% of recommended size for safety
+        chunk_size = max(1, int(base_chunk_size * safety_factor))
+        
+        # Set reasonable bounds
+        min_chunk_size = 10
+        max_chunk_size = 1000
+        
+        return max(min_chunk_size, min(chunk_size, max_chunk_size))
+    
+    def _estimate_frame_size_mb(self, width: int, height: int) -> float:
+        """
+        Estimate memory usage per frame in MB.
+        
+        Args:
+            width: Frame width in pixels
+            height: Frame height in pixels
+            
+        Returns:
+            Estimated frame size in MB
+        """
+        # Estimate based on RGB frame (3 bytes per pixel) plus processing overhead
+        pixels = width * height
+        rgb_size = pixels * 3  # 3 bytes per pixel for RGB
+        
+        # Add overhead for YOLO processing (roughly 2-3x the frame size)
+        processing_overhead = 2.5
+        total_bytes = rgb_size * processing_overhead
+        
+        # Convert to MB
+        return total_bytes / (1024 * 1024)
+    
+    def _process_chunk(self, cap, chunk_start: int, chunk_end: int, 
+                      absolute_start: int, fps: float) -> List[Dict]:
+        """
+        Process a chunk of video frames.
+        
+        Args:
+            cap: OpenCV VideoCapture object
+            chunk_start: Starting frame number for chunk
+            chunk_end: Ending frame number for chunk  
+            absolute_start: Absolute starting frame number for output
+            fps: Video frame rate
+            
+        Returns:
+            List of frame detection data
+        """
+        chunk_frames = []
+        
+        # Seek to chunk start
+        cap.set(cv2.CAP_PROP_POS_FRAMES, chunk_start)
+        
+        current_frame = chunk_start
+        while current_frame < chunk_end:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            
+            # Process all frames in the chunk
+            people_detections = self._detect_people_in_frame(frame, current_frame)
+            
+            frame_data = {
+                "frame_number": current_frame,
+                "timestamp": current_frame / fps,
+                "people": people_detections
+            }
+            
+            chunk_frames.append(frame_data)
+            current_frame += 1
+        
+        return chunk_frames
