@@ -143,6 +143,138 @@ def validate_json_file(file_path: str, expected_keys: Optional[List[str]] = None
     return path
 
 
+def validate_input_file(file_path: str, allowed_extensions: Optional[List[str]] = None) -> Path:
+    """
+    Validate that input file exists and has a valid extension.
+    
+    Args:
+        file_path: Path to the input file
+        allowed_extensions: List of allowed file extensions (e.g., ['.mp4', '.avi'])
+    
+    Returns:
+        Path object if valid
+        
+    Raises:
+        click.ClickException: If file is invalid
+    """
+    if allowed_extensions is None:
+        allowed_extensions = ['.mp4', '.avi', '.mov', '.mkv', '.m4v', '.wmv']
+    
+    path = Path(file_path)
+    
+    # Check if file exists
+    if not path.exists():
+        raise click.ClickException(f"Input file does not exist: {file_path}")
+    
+    # Check if it's a file (not directory)
+    if not path.is_file():
+        raise click.ClickException(f"Path is not a file: {file_path}")
+    
+    # Check file extension
+    if path.suffix.lower() not in [ext.lower() for ext in allowed_extensions]:
+        raise click.ClickException(
+            f"Unsupported file format: {path.suffix}\n"
+            f"   Supported formats: {', '.join(allowed_extensions)}"
+        )
+    
+    # Check file size (warn if very large)
+    file_size_mb = path.stat().st_size / 1024 / 1024
+    if file_size_mb > 1000:  # 1GB
+        click.echo(f"WARNING: Large file detected ({file_size_mb:.1f} MB). Processing may take a while.", err=True)
+    
+    # Check if file is readable
+    try:
+        with open(path, 'rb') as f:
+            f.read(1)
+    except PermissionError:
+        raise click.ClickException(f"Permission denied: Cannot read file {file_path}")
+    except Exception as e:
+        raise click.ClickException(f"Cannot access file {file_path}: {e}")
+    
+    return path
+
+
+def ensure_output_directory(output_dir: str) -> Path:
+    """
+    Ensure output directory exists and is writable.
+    
+    Args:
+        output_dir: Path to the output directory
+        
+    Returns:
+        Path object for the directory
+        
+    Raises:
+        click.ClickException: If directory cannot be created or accessed
+    """
+    path = Path(output_dir)
+    
+    try:
+        # Create directory if it doesn't exist
+        path.mkdir(parents=True, exist_ok=True)
+    except PermissionError:
+        raise click.ClickException(f"Permission denied: Cannot create directory {output_dir}")
+    except Exception as e:
+        raise click.ClickException(f"Cannot create directory {output_dir}: {e}")
+    
+    # Check if directory is writable
+    if not os.access(path, os.W_OK):
+        raise click.ClickException(f"Directory is not writable: {output_dir}")
+    
+    return path
+
+
+def validate_json_file(file_path: str, expected_keys: Optional[List[str]] = None) -> Path:
+    """
+    Validate that a JSON file exists and has expected structure.
+    
+    Args:
+        file_path: Path to the JSON file
+        expected_keys: List of required top-level keys
+        
+    Returns:
+        Path object if valid
+        
+    Raises:
+        click.ClickException: If file is invalid
+    """
+    import json
+    
+    path = Path(file_path)
+    
+    # Basic file existence check
+    if not path.exists():
+        raise click.ClickException(f"JSON file does not exist: {file_path}")
+    
+    if not path.is_file():
+        raise click.ClickException(f"Path is not a file: {file_path}")
+    
+    # Check if it's a JSON file
+    if path.suffix.lower() != '.json':
+        raise click.ClickException(f"File must be a JSON file: {file_path}")
+    
+    # Try to parse JSON
+    try:
+        with open(path, 'r') as f:
+            data = json.load(f)
+    except json.JSONDecodeError as e:
+        raise click.ClickException(f"Invalid JSON file {file_path}: {e}")
+    except PermissionError:
+        raise click.ClickException(f"Permission denied: Cannot read file {file_path}")
+    except Exception as e:
+        raise click.ClickException(f"Cannot read JSON file {file_path}: {e}")
+    
+    # Check expected keys
+    if expected_keys:
+        missing_keys = [key for key in expected_keys if key not in data]
+        if missing_keys:
+            raise click.ClickException(
+                f"JSON file {file_path} is missing required keys: {missing_keys}"
+            )
+    
+    return path
+
+
 @click.group()
 @click.option('--verbose', '-v', is_flag=True, default=False, help='Enable verbose output')
 @click.pass_context
