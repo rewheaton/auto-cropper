@@ -5,11 +5,12 @@ This CLI app will take a .mp4 file as an input and use object detection to "foll
 ## Features
 
 - **Person Detection**: Uses YOLOv8 for accurate person detection in video frames
-- **Person Tracking**: Intelligently selects and tracks a specific person across frames
+- **Person Tracking**: Automatically selects the most consistent person across frames
 - **Smart Cropping**: Crops video to 16:9 aspect ratio following the tracked person
 - **Smooth Motion**: Applies smoothing to reduce jitter in the cropped video
-- **Two-Stage Process**: Separates detection from cropping for flexibility and debugging
-- **Multiple Selection Methods**: Choose how to select which person to track
+- **Memory-Efficient Processing**: Handles large video files with chunked processing and memory monitoring
+- **Pipeline Architecture**: Separates detection, tracking, and cropping for flexibility and debugging
+- **Comprehensive CLI**: Multiple commands with proper validation and helpful error messages
 
 ## Installation
 
@@ -48,10 +49,11 @@ pip install auto-cropper
 
 ## Usage
 
-Auto-cropper works in two main stages:
+Auto-cropper works in three main stages:
 
-1. **Detection & Tracking**: Detect people and select one to track
-2. **Cropping**: Crop the video to follow the tracked person
+1. **Detection**: Detect people in video frames
+2. **Tracking**: Automatically select the most consistent person to track
+3. **Cropping**: Crop the video to follow the tracked person
 
 ### Quick Start (Complete Pipeline)
 
@@ -73,6 +75,8 @@ This will:
 - Detect all people using YOLOv8
 - Save detection data to `./output/input_video_detections.json`
 
+**Supported video formats**: .mp4, .avi, .mov, .mkv, .m4v, .wmv
+
 #### Step 2: Select Person to Track
 
 ```bash
@@ -81,7 +85,7 @@ auto-cropper track ./output/input_video_detections.json
 
 This will:
 - Analyze the detection data
-- Select which person to track using the 'most_consistent' method
+- Automatically select the most consistent person (person appearing in most frames)
 - Save tracking data to `./output/input_video_tracking.json`
 
 #### Step 3: Crop the Video
@@ -97,12 +101,18 @@ This will:
 
 ## Command Reference
 
+### Global Options
+
+| Option | Description |
+|--------|-------------|
+| `--verbose, -v` | Enable verbose output for detailed processing information |
+
 ### Main Commands
 
 | Command | Description |
 |---------|-------------|
 | `detect` | Detect people in video frames |
-| `track` | Select a person to track from detection data |
+| `track` | Select the most consistent person to track from detection data |
 | `crop` | Crop video based on tracking data |
 | `process` | Run complete pipeline in one command |
 | `summary` | Show detection statistics |
@@ -124,7 +134,7 @@ auto-cropper detect video.mp4 [OPTIONS]
 auto-cropper track detections.json
 ```
 
-The track command automatically uses the 'most_consistent' method to select the person who appears in the most frames.
+The track command automatically selects the person who appears most consistently across frames. No additional options are needed.
 
 ### Cropping Options
 
@@ -137,6 +147,7 @@ auto-cropper crop video.mp4 tracking.json [OPTIONS]
 | `--output, -o` | Auto-generated | Output video path |
 | `--margin, -mg` | `50` | Margin around person (pixels) |
 | `--smoothing, -s` | `10` | Smoothing window size |
+| `--duration, -d` | None | Limit to first N seconds (optional) |
 
 ### Complete Pipeline
 
@@ -152,7 +163,7 @@ auto-cropper process video.mp4 [OPTIONS]
 | `--smoothing, -s` | `10` | Smoothing window size |
 | `--duration, -d` | None | Limit to first N seconds (optional) |
 
-Runs the complete detection, tracking, and cropping pipeline in one command.
+Runs the complete detection, tracking, and cropping pipeline in one command. At the end, you'll be prompted to delete intermediate files (detection and tracking data) to save space.
 
 ## Examples
 
@@ -162,23 +173,26 @@ Runs the complete detection, tracking, and cropping pipeline in one command.
 # Process a video with default settings
 auto-cropper process my_video.mp4
 
-# Use a more accurate model (yolov8l.pt is used by default)
+# Enable verbose output for detailed information
 auto-cropper --verbose process my_video.mp4
 
-# Track using the built-in most_consistent method  
-auto-cropper --verbose process my_video.mp4
+# Process with custom output directory
+auto-cropper process my_video.mp4 --output-dir ./my_output
 
 # Add more margin around the person
-auto-cropper --verbose process my_video.mp4 --margin 100
+auto-cropper process my_video.mp4 --margin 100
+
+# Limit processing to first 30 seconds
+auto-cropper process my_video.mp4 --duration 30
 ```
 
 ### Step-by-Step with Custom Settings
 
 ```bash
-# 1. Detect with high confidence threshold
+# 1. Detect with high confidence threshold and verbose output
 auto-cropper --verbose detect video.mp4 --confidence 0.7
 
-# 2. Track the person (uses most_consistent method)
+# 2. Track the most consistent person
 auto-cropper --verbose track ./output/video_detections.json
 
 # 3. Crop with extra margin and smoothing
@@ -191,6 +205,14 @@ auto-cropper --verbose crop video.mp4 ./output/video_tracking.json --margin 75 -
 # View detection statistics
 auto-cropper summary ./output/video_detections.json
 ```
+
+### Output Information
+
+When processing is complete, the tool provides:
+- File size comparison between original and cropped video
+- Detection and tracking coverage statistics
+- Processing time and performance information
+- Location of all output files
 
 ### Performance Notes
 

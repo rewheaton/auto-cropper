@@ -15,3 +15,6 @@ torchvision==0.22.1
 
 # Progress bars and utilities
 tqdm==4.67.1
+
+# System monitoring
+psutil==6.1.0

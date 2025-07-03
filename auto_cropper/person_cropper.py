@@ -1,4 +1,4 @@
-"""Core video cropping functionality with person tracking."""
+"""Person cropping functionality with real-time tracking."""
 
 import cv2
 import numpy as np
@@ -9,7 +9,7 @@ from ultralytics import YOLO
 from tqdm import tqdm
 
 
-class PersonTracker:
+class PersonCropper:
     """Person tracking and video cropping functionality."""
     
     def __init__(
@@ -21,7 +21,7 @@ class PersonTracker:
         verbose: bool = False
     ):
         """
-        Initialize the PersonTracker.
+        Initialize the PersonCropper.
         
         Args:
             confidence_threshold: Minimum confidence for person detection
