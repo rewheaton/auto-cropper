@@ -144,7 +144,7 @@ def validate_json_file(file_path: str, expected_keys: Optional[List[str]] = None
 
 
 @click.group()
-@click.option('--verbose', '-v', is_flag=True, default=True, help='Enable verbose output')
+@click.option('--verbose', '-v', is_flag=True, default=False, help='Enable verbose output')
 @click.pass_context
 def main(ctx, verbose):
     """
@@ -436,12 +436,16 @@ def process(ctx, video_path: str, output_dir: str, confidence: float,
 
 @main.command()
 @click.argument('detection_file', type=click.Path())
-def summary(detection_file: str):
+@click.pass_context
+@click.pass_context
+def summary(ctx, detection_file: str):
     """
     Show summary of detection data.
     
     DETECTION_FILE: Path to detection JSON file
     """
+    verbose = ctx.obj['verbose']
+    
     # Validate input
     try:
         validated_detection_file = validate_json_file(detection_file, ['video_info', 'frames'])
@@ -449,7 +453,7 @@ def summary(detection_file: str):
         raise  # Re-raise click exceptions as-is
     
     try:
-        detector = PersonDetector()
+        detector = PersonDetector(verbose=verbose)
         summary_data = detector.get_detection_summary(str(validated_detection_file))
         
         click.echo(f"\nDetection Summary for {Path(detection_file).name}")
