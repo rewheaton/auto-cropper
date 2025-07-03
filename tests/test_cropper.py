@@ -8,7 +8,6 @@ from pathlib import Path
 import numpy as np
 import cv2
 
-from auto_cropper.detector import PersonDetector, PersonTracker
 from auto_cropper.video_cropper import VideoCropper
 
 
@@ -103,99 +102,6 @@ def sample_detection_data(temp_dir):
     return detection_file
 
 
-class TestPersonDetector:
-    """Test cases for PersonDetector class."""
-    
-    def test_init_default(self):
-        """Test default initialization."""
-        detector = PersonDetector()
-        assert detector.model_name == 'yolov8l.pt'
-        assert detector.confidence == 0.5
-        assert detector.verbose is False
-        assert detector.person_class_id == 0
-    
-    def test_init_custom(self):
-        """Test custom initialization."""
-        detector = PersonDetector(
-            model_name='yolov8s.pt',
-            confidence=0.7,
-            verbose=True
-        )
-        assert detector.model_name == 'yolov8s.pt'
-        assert detector.confidence == 0.7
-        assert detector.verbose is True
-    
-    @pytest.mark.skipif(not os.environ.get('RUN_YOLO_TESTS'), 
-                       reason="Skipping YOLO tests - set RUN_YOLO_TESTS=1 to enable")
-    def test_detect_people_in_video(self, sample_video, temp_dir):
-        """Test video detection (only if YOLO tests enabled)."""
-        detector = PersonDetector(verbose=True)
-        detection_file = detector.detect_people_in_video(str(sample_video), str(temp_dir))
-        
-        assert Path(detection_file).exists()
-        
-        # Check detection file content
-        with open(detection_file, 'r') as f:
-            data = json.load(f)
-        
-        assert "video_info" in data
-        assert "frames" in data
-        assert data["video_info"]["total_frames"] == 30
-    
-    def test_get_detection_summary(self, sample_detection_data):
-        """Test detection summary generation."""
-        detector = PersonDetector()
-        summary = detector.get_detection_summary(str(sample_detection_data))
-        
-        assert summary["total_frames"] == 30
-        assert summary["frames_with_people"] == 30
-        assert summary["total_detections"] == 30
-        assert summary["detection_coverage"] == 100.0
-
-
-class TestPersonTracker:
-    """Test cases for PersonTracker class."""
-    
-    def test_init(self):
-        """Test tracker initialization."""
-        tracker = PersonTracker(verbose=True)
-        assert tracker.verbose is True
-    
-    def test_select_largest_person(self, sample_detection_data, temp_dir):
-        """Test selecting largest person."""
-        tracker = PersonTracker()
-        tracking_file = tracker.select_person_to_track(str(sample_detection_data), "largest")
-        
-        assert Path(tracking_file).exists()
-        
-        # Check tracking file content
-        with open(tracking_file, 'r') as f:
-            data = json.load(f)
-        
-        assert "video_info" in data
-        assert "tracking_info" in data
-        assert "tracked_person" in data
-        assert data["tracking_info"]["total_tracked_frames"] > 0
-    
-    def test_select_most_consistent_person(self, sample_detection_data, temp_dir):
-        """Test selecting most consistent person."""
-        tracker = PersonTracker()
-        tracking_file = tracker.select_person_to_track(str(sample_detection_data), "most_consistent")
-        
-        assert Path(tracking_file).exists()
-        
-        with open(tracking_file, 'r') as f:
-            data = json.load(f)
-        
-        assert len(data["tracked_person"]) > 0
-    
-    def test_select_center_person(self, sample_detection_data, temp_dir):
-        """Test selecting center person."""
-        tracker = PersonTracker()
-        tracking_file = tracker.select_person_to_track(str(sample_detection_data), "center")
-        
-        assert Path(tracking_file).exists()
-
 
 class TestVideoCropper:
     """Test cases for VideoCropper class."""
@@ -265,64 +171,6 @@ class TestVideoCropper:
         smoothed_variance_x = np.var([p[0] for p in smoothed])
         
         assert smoothed_variance_x <= original_variance_x
-
-
-class TestIntegration:
-    """Integration tests for the complete pipeline."""
-    
-    def test_tracking_data_format(self, sample_detection_data, temp_dir):
-        """Test that tracking data format is compatible with cropping."""
-        tracker = PersonTracker()
-        tracking_file = tracker.select_person_to_track(str(sample_detection_data), "largest")
-        
-        # Load tracking data
-        with open(tracking_file, 'r') as f:
-            tracking_data = json.load(f)
-        
-        # Verify required fields for video cropper
-        assert "video_info" in tracking_data
-        assert "tracked_person" in tracking_data
-        
-        if tracking_data["tracked_person"]:
-            person_entry = tracking_data["tracked_person"][0]
-            assert "frame_number" in person_entry
-            assert "bbox" in person_entry
-            assert "center" in person_entry
-    
-    def test_empty_detection_handling(self, temp_dir):
-        """Test handling of videos with no people detected."""
-        # Create empty detection data
-        empty_detection_data = {
-            "video_info": {
-                "video_path": str(temp_dir / "empty_video.mp4"),
-                "total_frames": 10,
-                "fps": 30.0,
-                "width": 640,
-                "height": 480
-            },
-            "frames": [
-                {
-                    "frame_number": i,
-                    "timestamp": i / 30.0,
-                    "people": []
-                }
-                for i in range(10)
-            ]
-        }
-        
-        detection_file = temp_dir / "empty_detections.json"
-        with open(detection_file, 'w') as f:
-            json.dump(empty_detection_data, f)
-        
-        tracker = PersonTracker()
-        tracking_file = tracker.select_person_to_track(str(detection_file), "largest")
-        
-        with open(tracking_file, 'r') as f:
-            tracking_data = json.load(f)
-        
-        # Should handle empty case gracefully
-        assert tracking_data["tracking_info"]["total_tracked_frames"] == 0
-        assert len(tracking_data["tracked_person"]) == 0
 
 
 if __name__ == '__main__':

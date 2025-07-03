@@ -24,6 +24,13 @@ Auto-Cropper is a CLI tool that automatically crops videos to follow a person us
 - **Error Handling**: Provide clear, actionable error messages without emojis
 - **Testing**: Write comprehensive unit tests for all functionality
 - **Running Tests**: Always run tests before committing changes
+- No emojis in code comments or error messages or console output
+- Every class should be in its own file
+
+### Development Process
+1. Write a failing test for new functionality
+2. Implement the functionality
+3. Refactor code while ensuring tests pass
 
 ### Naming Conventions
 - **Functions**: Use snake_case (e.g., `detect_people_in_video`)

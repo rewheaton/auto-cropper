@@ -7,9 +7,9 @@ from typing import Optional, List
 
 import click
 
-from .detector import PersonDetector, PersonTracker
-from .video_cropper import VideoCropper
-
+from auto_cropper.person_detector import PersonDetector
+from auto_cropper.person_tracker import PersonTracker
+from auto_cropper.video_cropper import VideoCropper
 
 def validate_input_file(file_path: str, allowed_extensions: Optional[List[str]] = None) -> Path:
     """
@@ -241,7 +241,7 @@ def track(ctx, detection_file: str):
     
     try:
         tracker = PersonTracker(verbose=verbose)
-        tracking_file = tracker.select_person_to_track(str(validated_detection_file), 'most_consistent')
+        tracking_file = tracker.select_person_to_track(str(validated_detection_file))
         
         # Load and show tracking summary
         import json
@@ -253,12 +253,11 @@ def track(ctx, detection_file: str):
         click.echo(f"\nTracking complete!")
         click.echo(f"Tracking data saved to: {tracking_file}")
         click.echo(f"\nTracking Summary:")
-        click.echo(f"   Selection method: most_consistent")
         click.echo(f"   Tracked frames: {tracking_info['total_tracked_frames']}")
         click.echo(f"   Tracking coverage: {tracking_info['tracking_coverage']}%")
         
         if tracking_info['total_tracked_frames'] == 0:
-            click.echo("\nWARNING: No person could be tracked. Try a different tracking method.")
+            click.echo("\nWARNING: No person could be tracked consistently across frames.")
         else:
             # Get original video path from detection data
             video_path = tracking_data['video_info']['video_path']
@@ -400,20 +399,25 @@ def process(ctx, video_path: str, output_dir: str, confidence: float,
         detector = PersonDetector(model_name='yolov8l.pt', confidence=confidence, verbose=verbose)
         detection_file = detector.detect_people_in_video(str(validated_video_path), str(validated_output_dir))
         
+        # Show detection summary
+        summary = detector.get_detection_summary(detection_file)
+        click.echo(f"Detection complete!")
+        click.echo(f"Detection coverage: {summary['detection_coverage']}%")
+        
         # Step 2: Tracking
         click.echo("\nStep 2: Selecting person to track...")
         tracker = PersonTracker(verbose=verbose)
-        tracking_file = tracker.select_person_to_track(detection_file, 'most_consistent')
+        tracking_file = tracker.select_person_to_track(detection_file)
+        click.echo("Tracking complete!")
         
         # Step 3: Cropping
         click.echo("\nStep 3: Cropping video...")
         cropper = VideoCropper(margin=margin, smoothing_window=smoothing, verbose=verbose)
         output_path = cropper.crop_video(str(validated_video_path), tracking_file, output_dir=str(validated_output_dir), duration_limit=duration)
-        click.echo("\nStep 3: Cropping video...")
-        cropper = VideoCropper(margin=margin, smoothing_window=smoothing, verbose=verbose)
-        output_path = cropper.crop_video(video_path, tracking_file, output_dir=output_dir, duration_limit=duration)
+        click.echo("Video cropping complete!")
         
-        click.echo(f"\nComplete! Final video saved to: {output_path}")
+        click.echo(f"\nPipeline complete!")
+        click.echo(f"Final video saved to: {output_path}")
         
         # Clean up intermediate files option
         click.echo(f"\nIntermediate files:")
@@ -426,7 +430,7 @@ def process(ctx, video_path: str, output_dir: str, confidence: float,
             click.echo("Intermediate files deleted")
         
     except Exception as e:
-        click.echo(f"Error in processing pipeline: {e}", err=True)
+        click.echo(f"Error during processing: {e}", err=True)
         sys.exit(1)
 
 

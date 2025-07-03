@@ -228,3 +228,149 @@ def test_cli_track_missing_keys(tmp_path):
     result = runner.invoke(main, ['track', str(incomplete_json)])
     assert result.exit_code != 0
     assert "missing required keys" in result.output
+
+
+@patch('auto_cropper.cli.VideoCropper')
+@patch('auto_cropper.cli.PersonTracker')  
+@patch('auto_cropper.cli.PersonDetector')
+def test_cli_process_command_calls_all_functions(mock_detector, mock_tracker, mock_cropper, tmp_path):
+    """Test that the process command calls detect, track, and crop in sequence."""
+    runner = CliRunner()
+    
+    # Create test video file
+    video_file = tmp_path / "test_video.mp4"
+    video_file.write_bytes(b"fake video content")
+    
+    # Create expected output directory
+    output_dir = tmp_path / "output"
+    
+    # Mock detection results
+    detection_file = tmp_path / "test_video_detections.json"
+    detection_data = {
+        "video_info": {"video_path": str(video_file), "total_frames": 10},
+        "frames": [{"frame_number": 0, "people": []}]
+    }
+    
+    with open(detection_file, 'w') as f:
+        json.dump(detection_data, f)
+    
+    # Mock tracking results  
+    tracking_file = tmp_path / "test_video_tracking.json"
+    tracking_data = {
+        "video_info": {"video_path": str(video_file)},
+        "tracking_info": {"total_tracked_frames": 5},
+        "tracked_person": []
+    }
+    
+    with open(tracking_file, 'w') as f:
+        json.dump(tracking_data, f)
+    
+    # Configure mocks
+    mock_detector_instance = mock_detector.return_value
+    mock_detector_instance.detect_people_in_video.return_value = str(detection_file)
+    mock_detector_instance.get_detection_summary.return_value = {
+        "total_frames": 10,
+        "frames_with_people": 5,
+        "detection_coverage": 50.0,
+        "total_detections": 5,
+        "average_people_per_frame": 0.5,
+        "max_people_in_frame": 1
+    }
+    
+    mock_tracker_instance = mock_tracker.return_value
+    mock_tracker_instance.select_person_to_track.return_value = str(tracking_file)
+    
+    mock_cropper_instance = mock_cropper.return_value
+    cropped_video = tmp_path / "test_video_cropped.mp4"
+    mock_cropper_instance.crop_video.return_value = str(cropped_video)
+    
+    # Run the process command with input='\n' to automatically answer 'n' to delete prompt
+    result = runner.invoke(main, ['process', str(video_file), '--output-dir', str(output_dir)], input='\n')
+    
+    # Verify command succeeded
+    assert result.exit_code == 0
+    
+    # Verify all components were instantiated
+    mock_detector.assert_called_once()
+    mock_tracker.assert_called_once()
+    mock_cropper.assert_called_once()
+    
+    # Verify detection was called
+    mock_detector_instance.detect_people_in_video.assert_called_once_with(str(video_file), str(output_dir))
+    mock_detector_instance.get_detection_summary.assert_called_once_with(str(detection_file))
+    
+    # Verify tracking was called with detection results
+    mock_tracker_instance.select_person_to_track.assert_called_once_with(str(detection_file))
+    
+    # Verify cropping was called with video and tracking data
+    mock_cropper_instance.crop_video.assert_called_once_with(str(video_file), str(tracking_file), output_dir=str(output_dir), duration_limit=None)
+    
+    # Verify output messages
+    assert "Detection complete!" in result.output
+    assert "Tracking complete!" in result.output  
+    assert "Video cropping complete!" in result.output
+    assert "Pipeline complete!" in result.output
+
+
+@patch('auto_cropper.cli.PersonDetector')
+def test_cli_process_command_handles_detection_failure(mock_detector, tmp_path):
+    """Test that process command handles detection failure gracefully."""
+    runner = CliRunner()
+    
+    # Create test video file
+    video_file = tmp_path / "test_video.mp4"
+    video_file.write_bytes(b"fake video content")
+    
+    output_dir = tmp_path / "output"
+    
+    # Mock detection to raise an exception
+    mock_detector_instance = mock_detector.return_value
+    mock_detector_instance.detect_people_in_video.side_effect = Exception("Detection failed")
+    
+    # Run the process command
+    result = runner.invoke(main, ['process', str(video_file), '--output-dir', str(output_dir)])
+    
+    # Verify command failed gracefully
+    assert result.exit_code == 1
+    assert "Error during processing" in result.output
+    assert "Detection failed" in result.output
+
+
+@patch('auto_cropper.cli.VideoCropper')
+@patch('auto_cropper.cli.PersonTracker')  
+@patch('auto_cropper.cli.PersonDetector')
+def test_cli_process_command_handles_tracking_failure(mock_detector, mock_tracker, mock_cropper, tmp_path):
+    """Test that process command handles tracking failure gracefully."""
+    runner = CliRunner()
+    
+    # Create test video file
+    video_file = tmp_path / "test_video.mp4"
+    video_file.write_bytes(b"fake video content")
+    
+    output_dir = tmp_path / "output"
+    
+    # Mock successful detection
+    detection_file = tmp_path / "test_video_detections.json" 
+    mock_detector_instance = mock_detector.return_value
+    mock_detector_instance.detect_people_in_video.return_value = str(detection_file)
+    mock_detector_instance.get_detection_summary.return_value = {
+        "total_frames": 10, "frames_with_people": 5, "detection_coverage": 50.0,
+        "total_detections": 5, "average_people_per_frame": 0.5, "max_people_in_frame": 1
+    }
+    
+    # Mock tracking to raise an exception
+    mock_tracker_instance = mock_tracker.return_value
+    mock_tracker_instance.select_person_to_track.side_effect = Exception("Tracking failed")
+    
+    # Run the process command
+    result = runner.invoke(main, ['process', str(video_file), '--output-dir', str(output_dir)])
+    
+    # Verify command failed gracefully
+    assert result.exit_code == 1
+    assert "Error during processing" in result.output
+    assert "Tracking failed" in result.output
+    
+    # Verify detection was called but tracking failed before cropping
+    mock_detector_instance.detect_people_in_video.assert_called_once()
+    mock_tracker_instance.select_person_to_track.assert_called_once()
+    mock_cropper.assert_not_called()  # Should not reach cropping
