@@ -437,7 +437,6 @@ def process(ctx, video_path: str, output_dir: str, confidence: float,
 @main.command()
 @click.argument('detection_file', type=click.Path())
 @click.pass_context
-@click.pass_context
 def summary(ctx, detection_file: str):
     """
     Show summary of detection data.
